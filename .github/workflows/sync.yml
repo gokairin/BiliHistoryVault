@@ -1,0 +1,74 @@
+name: Bilibili History Sync
+on:
+  schedule:
+    - cron: '0 */4 * * *'
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - run: pip install -r requirements.txt
+      - run: python src/sync.py
+        env:
+          SESSDATA: ${{ secrets.SESSDATA }}
+      - name: Send failure notification
+        if: failure()
+        continue-on-error: true
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.MAIL_SERVER }}
+          server_port: ${{ secrets.MAIL_PORT }}
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: ❌ B站数据同步失败 - SESSDATA 已失效
+          to: ${{ secrets.MAIL_RECIPIENT }}
+          from: BiliBot 数据同步
+          body: |
+            B站数据同步任务执行失败。
+
+            原因：B站登录凭证 SESSDATA 已失效或无效，无法获取观看历史数据。
+
+
+            如何获取新的 SESSDATA：
+
+            1. 打开浏览器，访问 https://www.bilibili.com 并登录你的账号
+
+            2. 按 F12 打开开发者工具
+
+            3. 切换到 Application (应用) 标签页
+
+            4. 在左侧导航栏中找到 Cookies → https://www.bilibili.com
+
+            5. 找到名为 SESSDATA 的条目，复制其 Value（注意不要复制多余的空格）
+
+
+            如何更新 SESSDATA：
+
+            1. 打开仓库 ${{ github.server_url }}/${{ github.repository }}
+
+            2. 进入 Settings → Secrets and variables → Actions
+
+            3. 找到 SESSDATA secret，点击 Update
+
+            4. 粘贴新的 SESSDATA 值，保存
+
+            5. 手动触发 workflow 重试
+      - name: Commit and push
+        run: |
+          git config user.name "BiliBot"
+          git config user.email "bilibot@users.noreply.github.com"
+          git add output/
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore: update BilibiliHistory.xlsx"
+            git pull --rebase origin master
+            git push origin HEAD:master
+          fi
